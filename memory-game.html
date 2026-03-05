@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Matching Game</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #gameContainer {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            max-width: 500px;
+        }
+
+        #gameHeader {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #gameHeader h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        #gameHeader p {
+            display: inline-block;
+            margin: 0 15px;
+            font-size: 16px;
+            color: #666;
+            font-weight: bold;
+        }
+
+        #gameHeader span {
+            color: #667eea;
+        }
+
+        #gameBoard {
+            width: 400px;
+            display: flex;
+            flex-wrap: wrap;
+            margin: 0 auto;
+            justify-content: center;
+        }
+
+        .card {
+            width: 80px;
+            height: 80px;
+            margin: 5px;
+            background-color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 40px;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 8px;
+            user-select: none;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .card.flipped {
+            background-color: #fff;
+            color: #333;
+            border: 2px solid #667eea;
+        }
+
+        .card.matched {
+            background-color: #4CAF50;
+            color: #fff;
+            cursor: default;
+            opacity: 0.7;
+        }
+
+        .card.matched:hover {
+            transform: none;
+        }
+
+        #winMessage {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            animation: celebrate 0.5s ease;
+        }
+
+        @keyframes celebrate {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        #winMessage h2 {
+            margin-bottom: 10px;
+        }
+
+        #restartBtn {
+            margin-top: 20px;
+            padding: 10px 30px;
+            font-size: 16px;
+            background: white;
+            color: #667eea;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+
+        #restartBtn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        #previewMessage {
+            display: none;
+            margin-top: 20px;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        #previewMessage span {
+            font-size: 32px;
+            display: block;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="gameHeader">
+            <h2>🎮 Memory Matching Game</h2>
+            <p>Moves: <span id="moves">0</span></p>
+            <p>Time: <span id="timer">0</span>s</p>
+        </div>
+        <div id="gameBoard"></div>
+        <div id="previewMessage">
+            Memorize the board!<br>
+            <span id="countdown">5</span>
+        </div>
+        <div id="winMessage">
+            <h2>🎉 You Win! 🎉</h2>
+            <p>Completed in <span id="finalMoves"></span> moves</p>
+            <p>Time: <span id="finalTime"></span> seconds</p>
+            <button id="restartBtn">Play Again</button>
+        </div>
+    </div>
+
+    <!-- Audio elements (using data URIs for placeholder sounds) -->
+    <audio id="matchSound"></audio>
+    <audio id="wrongSound"></audio>
+
+    <script>
+        $(document).ready(function() {
+            // Game state variables
+            let cards = ['🍎', '🍌', '🍇', '🍊', '🍓', '🍉', '🍒', '🍑'];
+            let gameCards = [];
+            let flippedCards = [];
+            let matchedPairs = 0;
+            let moves = 0;
+            let timeElapsed = 0;
+            let timerInterval = null;
+            let canFlip = true;
+            let isPreviewMode = false;
+
+            // Create simple beep sounds using Web Audio API
+            function playMatchSound() {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            }
+
+            function playWrongSound() {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 200;
+                oscillator.type = 'sawtooth';
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.2);
+            }
+
+            // Initialize game
+            function initGame() {
+                // Reset variables
+                gameCards = [];
+                flippedCards = [];
+                matchedPairs = 0;
+                moves = 0;
+                timeElapsed = 0;
+                canFlip = true;
+                
+                // Clear timer
+                if (timerInterval) {
+                    clearInterval(timerInterval);
+                    timerInterval = null;
+                }
+                
+                // Update UI
+                $('#moves').text(moves);
+                $('#timer').text(timeElapsed);
+                $('#winMessage').hide();
+                $('#gameBoard').empty();
+                
+                // Create card pairs
+                gameCards = [...cards, ...cards];
+                
+                // Shuffle cards
+                shuffleArray(gameCards);
+                
+                // Generate card elements
+                gameCards.forEach((symbol, index) => {
+                    const card = $('<div>')
+                        .addClass('card')
+                        .attr('data-symbol', symbol)
+                        .attr('data-index', index)
+                        .text('?');
+                    $('#gameBoard').append(card);
+                });
+                
+                // Show preview for 5 seconds
+                showPreview();
+            }
+
+            // Shuffle array function
+            function shuffleArray(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+            }
+
+            // Show preview of all cards for 5 seconds
+            function showPreview() {
+                isPreviewMode = true;
+                canFlip = false;
+                
+                // Show all cards
+                $('.card').each(function() {
+                    const symbol = $(this).attr('data-symbol');
+                    $(this).addClass('flipped').text(symbol);
+                });
+                
+                // Show countdown message below the board
+                $('#previewMessage').fadeIn();
+                let countdown = 5;
+                $('#countdown').text(countdown);
+                
+                const countdownInterval = setInterval(() => {
+                    countdown--;
+                    $('#countdown').text(countdown);
+                    
+                    if (countdown === 0) {
+                        clearInterval(countdownInterval);
+                        
+                        // Hide all cards
+                        $('.card').removeClass('flipped').text('?');
+                        $('#previewMessage').fadeOut();
+                        
+                        isPreviewMode = false;
+                        canFlip = true;
+                    }
+                }, 1000);
+            }
+
+            // Start timer on first flip
+            function startTimer() {
+                if (!timerInterval) {
+                    timerInterval = setInterval(() => {
+                        timeElapsed++;
+                        $('#timer').text(timeElapsed);
+                    }, 1000);
+                }
+            }
+
+            // Handle card click
+            $(document).on('click', '.card', function() {
+                if (!canFlip || isPreviewMode) return;
+                
+                const $card = $(this);
+                
+                // Prevent clicking already flipped or matched cards
+                if ($card.hasClass('flipped') || $card.hasClass('matched')) {
+                    return;
+                }
+                
+                // Start timer on first click
+                startTimer();
+                
+                // Flip the card
+                const symbol = $card.attr('data-symbol');
+                $card.addClass('flipped').text(symbol);
+                flippedCards.push($card);
+                
+                // Check if two cards are flipped
+                if (flippedCards.length === 2) {
+                    canFlip = false;
+                    moves++;
+                    $('#moves').text(moves);
+                    
+                    checkMatch();
+                }
+            });
+
+            // Check if cards match
+            function checkMatch() {
+                const [card1, card2] = flippedCards;
+                const symbol1 = card1.attr('data-symbol');
+                const symbol2 = card2.attr('data-symbol');
+                
+                if (symbol1 === symbol2) {
+                    // Match found
+                    setTimeout(() => {
+                        card1.addClass('matched').removeClass('flipped');
+                        card2.addClass('matched').removeClass('flipped');
+                        matchedPairs++;
+                        flippedCards = [];
+                        canFlip = true;
+                        
+                        playMatchSound();
+                        
+                        // Check if game is won
+                        if (matchedPairs === cards.length) {
+                            winGame();
+                        }
+                    }, 500);
+                } else {
+                    // No match
+                    setTimeout(() => {
+                        card1.removeClass('flipped').text('?');
+                        card2.removeClass('flipped').text('?');
+                        flippedCards = [];
+                        canFlip = true;
+                        
+                        playWrongSound();
+                    }, 1000);
+                }
+            }
+
+            // Win game
+            function winGame() {
+                clearInterval(timerInterval);
+                $('#finalMoves').text(moves);
+                $('#finalTime').text(timeElapsed);
+                $('#winMessage').fadeIn();
+            }
+
+            // Restart game
+            $('#restartBtn').click(function() {
+                initGame();
+            });
+
+            // Initialize game on page load
+            initGame();
+        });
+    </script>
+</body>
+</html>
